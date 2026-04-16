@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>解析结构模型 · 分层递阶 · 逐步推演</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/leader-line@1.0.5/leader-line.min.js"></script>
+    <script>
+        MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }, chtml: { displayAlign: 'center' } };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body { font-family: -apple-system, "Noto Sans SC", sans-serif; background-color: #f1f5f9; overflow-x: hidden; }
+        .compact-card { background-color: white; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .card-header { font-size: 1rem; font-weight: bold; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.75rem; margin-bottom: 1rem; color: #1e293b; display: flex; justify-content: space-between; align-items: center; }
+        .nav-active { color: #2563eb !important; border-bottom: 2px solid #2563eb !important; font-weight: bold; background-color: #eff6ff !important; }
+        .step-btn-active { background-color: #2563eb !important; color: white !important; border-color: #2563eb !important; }
+        .matrix-cell {
+            width: 48px; height: 48px; text-align: center; vertical-align: middle;
+            font-weight: 600; font-size: 1rem; border: 1px solid #cbd5e1;
+            cursor: pointer; transition: 0.1s; user-select: none;
+        }
+        .matrix-cell.one { background-color: #2563eb; color: white; border-color: #1d4ed8; }
+        .matrix-cell.zero { background-color: #f8fafc; color: #1e293b; }
+        .matrix-cell:hover { opacity: 0.8; }
+        .math-card { border-left: 4px solid #3b82f6; background-color: #f8fafc; padding: 1.5rem; border-radius: 0.5rem; margin: 0.5rem 0; overflow-x: auto; }
+        .academic-table th { background-color: #f8fafc; color: #475569; font-weight: bold; border-bottom: 2px solid #cbd5e1; padding: 10px; }
+        .academic-table td { border-bottom: 1px solid #e2e8f0; padding: 10px; }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+        .graph-wrapper { position: relative; min-height: 380px; background: #fafcff; border-radius: 0.5rem; padding: 0.5rem; }
+        .graph-canvas-container { position: relative; width: 100%; height: 380px; }
+        .node {
+            position: absolute; width: 46px; height: 46px; border-radius: 50%;
+            background: #2563eb; color: white; font-weight: bold;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1); border: 2px solid white;
+            z-index: 30; transition: opacity 0.2s; cursor: default; font-size: 1rem;
+        }
+        .node.hidden-node { opacity: 0; pointer-events: none; }
+        .leader-line { z-index: 20; }
+        .step-badge {
+            background: #e0e7ff; color: #1e40af; padding: 2px 10px;
+            border-radius: 20px; font-size: 0.8rem; font-weight: bold;
+        }
+        .process-matrix-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: center;
+        }
+        .matrix-box {
+            background: #f8fafc;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #cbd5e1;
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col text-slate-800">
+
+<header class="bg-white border-b sticky top-0 z-[100] shadow-md">
+    <div class="max-w-[1500px] mx-auto flex flex-col md:flex-row items-center justify-between px-6 py-3">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-project-diagram text-3xl text-indigo-600"></i>
+            <div>
+                <h1 class="text-xl font-extrabold tracking-wide leading-tight text-slate-900">解析结构模型（ISM）· 分层递阶 · 逐步推演</h1>
+                <p class="text-slate-500 text-xs uppercase tracking-wider font-bold mt-0.5">教材 §4.3 · 7要素经典案例 | 单击「下一步」逐层展开</p>
+            </div>
+        </div>
+        <div class="flex gap-1.5 mt-3 md:mt-0 bg-slate-100 p-1.5 rounded-lg border border-slate-200 shadow-inner">
+            <button onclick="switchTab('sandbox')" id="nav-sandbox" class="master-nav-btn px-5 py-2 rounded text-sm font-bold bg-indigo-600 text-white shadow-sm transition-all"><i class="fa-solid fa-sliders mr-1"></i> 动态演示</button>
+            <button onclick="switchTab('steps')" id="nav-steps" class="master-nav-btn px-5 py-2 rounded text-sm font-bold bg-transparent text-slate-600 hover:bg-slate-200 transition-all"><i class="fa-solid fa-list-check mr-1"></i> 步骤详解</button>
+            <button onclick="switchTab('analysis')" id="nav-analysis" class="master-nav-btn px-5 py-2 rounded text-sm font-bold bg-transparent text-slate-600 hover:bg-slate-200 transition-all"><i class="fa-solid fa-chart-pie mr-1"></i> 结果深度分析</button>
+        </div>
+    </div>
+</header>
+
+<main class="flex-grow p-6 flex justify-center items-start">
+    <div class="max-w-[1500px] w-full relative">
+
+        <!-- ========== 动态演示 TAB ========= -->
+        <section id="tab-sandbox" class="animate-fadeIn flex flex-col gap-6">
+            <div class="flex flex-col lg:flex-row gap-6">
+                <div class="w-full lg:w-2/5 compact-card flex flex-col">
+                    <div class="card-header">
+                        <span class="text-indigo-600"><i class="fa-solid fa-border-all mr-1"></i> 邻接矩阵 A (点击切换 0/1)</span>
+                        <button onclick="resetToDefaultISM()" class="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded border shadow-sm"><i class="fa-solid fa-rotate-left"></i> 重置教材例题</button>
+                    </div>
+                    <div class="flex justify-center overflow-x-auto py-2">
+                        <table class="border-separate border-spacing-0">
+                            <tbody id="adjacency-table"></tbody>
+                        </table>
+                    </div>
+                    <div class="mt-4 text-sm text-slate-500 bg-slate-50 p-3 rounded-lg border">
+                        <i class="fa-solid fa-circle-info text-indigo-500 mr-1"></i> 邻接矩阵表示要素间的直接影响。点击单元格切换0/1，系统实时计算可达矩阵与层级。
+                    </div>
+                </div>
+                <div class="w-full lg:w-3/5 compact-card flex flex-col">
+                    <div class="card-header">
+                        <span><i class="fa-solid fa-share-alt text-emerald-500 mr-1"></i> 多层递阶结构 · 逐步推演</span>
+                        <div class="flex items-center gap-3">
+                            <span class="step-badge"><span id="current-step-label">第0步</span> / 共4级</span>
+                            <button onclick="nextStep()" id="next-step-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-1.5 rounded-lg shadow flex items-center gap-1 transition"><i class="fa-solid fa-arrow-right"></i> 下一步</button>
+                            <button onclick="resetGraphSteps()" class="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded border"><i class="fa-solid fa-undo-alt"></i> 重置视图</button>
+                        </div>
+                    </div>
+                    <div class="graph-wrapper">
+                        <div id="graph-container" class="graph-canvas-container relative"></div>
+                    </div>
+                    <div class="mt-3 text-xs text-slate-500 flex justify-between">
+                        <span><i class="fa-regular fa-lightbulb"></i> 箭头采用规整直线 + 实心三角，清晰展示直接影响关系</span>
+                        <span id="graph-step-hint" class="font-medium text-indigo-600"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="compact-card bg-slate-50/70 flex flex-col">
+                    <div class="text-sm font-bold text-slate-700 mb-3 border-b pb-2"><i class="fa-solid fa-arrow-right-to-bracket text-indigo-500 mr-2"></i>可达矩阵 R = (A+I)^k</div>
+                    <div id="reachability-math" class="matrix-container text-base"></div>
+                    <div class="mt-4 border-t pt-3">
+                        <button onclick="toggleProcessPanel()" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
+                            <i class="fa-solid fa-caret-right transition-transform" id="process-caret"></i>
+                            <span>📈 查看幂运算过程 ( (A+I)^1 , (A+I)^2 , ... )</span>
+                        </button>
+                        <div id="process-panel" class="hidden mt-3">
+                            <div id="matrix-process-content" class="process-matrix-container"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="compact-card bg-indigo-50/40 border-indigo-200">
+                    <div class="text-sm font-bold text-indigo-800 mb-3 border-b border-indigo-200 pb-2"><i class="fa-solid fa-layer-group mr-2"></i>级别划分结果</div>
+                    <div id="level-result" class="text-base space-y-2 px-2"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== 步骤详解 TAB ========= -->
+        <section id="tab-steps" class="hidden compact-card py-8 px-10">
+            <div class="flex gap-3 mb-8 border-b pb-4 overflow-x-auto">
+                <button onclick="showStep(1)" class="ism-step-btn step-btn-active px-5 py-2.5 rounded-lg text-sm font-bold border">1. 生成邻接矩阵</button>
+                <button onclick="showStep(2)" class="ism-step-btn px-5 py-2.5 rounded-lg text-sm font-bold border text-slate-600 bg-slate-50">2. 计算可达矩阵</button>
+                <button onclick="showStep(3)" class="ism-step-btn px-5 py-2.5 rounded-lg text-sm font-bold border text-slate-600 bg-slate-50">3. 级别分配</button>
+                <button onclick="showStep(4)" class="ism-step-btn px-5 py-2.5 rounded-lg text-sm font-bold border text-slate-600 bg-slate-50">4. 绘制递阶结构</button>
+            </div>
+            <div id="step-content" class="min-h-[400px]"></div>
+        </section>
+
+        <!-- ========== 结果深度分析 TAB ========= -->
+        <section id="tab-analysis" class="hidden space-y-6">
+            <div class="bg-indigo-50 border border-indigo-200 text-indigo-800 p-5 rounded-lg flex items-start gap-4">
+                <i class="fa-solid fa-magnifying-glass-chart text-2xl"></i>
+                <div><strong>全局分析报告：</strong> 基于当前邻接矩阵，展示可达集合、先行集合及详细的逐级划分过程（表4-6至表4-9）。</div>
+            </div>
+            <div id="analysis-step-tables" class="space-y-4"></div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="compact-card overflow-x-auto">
+                    <div class="card-header">📋 可达集 & 先行集 (初始完整)</div>
+                    <table class="w-full text-sm academic-table" id="analysis-sets-table"></table>
+                </div>
+                <div class="compact-card">
+                    <div class="card-header">🏆 最终级别排序</div>
+                    <div id="analysis-levels-detail" class="p-4 space-y-3"></div>
+                </div>
+            </div>
+            <div class="compact-card">
+                <div class="card-header">📐 分块三角矩阵 R' (按级别排列)</div>
+                <div id="analysis-block-matrix" class="matrix-container text-base"></div>
+            </div>
+        </section>
+    </div>
+</main>
+
+<script>
+    (function(){
+        // ---------- 全局渲染器 ----------
+        const MathRenderer = {
+            queue: Promise.resolve(),
+            render: function(elementId, texContent) {
+                const container = document.getElementById(elementId);
+                if (!container) return;
+                const buffer = document.createElement('div');
+                buffer.innerHTML = texContent;
+                this.queue = this.queue.then(() => MathJax.typesetPromise([buffer]).then(() => {
+                    container.innerHTML = ''; while (buffer.firstChild) container.appendChild(buffer.firstChild);
+                }));
+            },
+            renderStep: function(elementId, html) {
+                const el = document.getElementById(elementId);
+                if(el) { el.innerHTML = html; this.queue.then(() => MathJax.typesetPromise([el])); }
+            }
+        };
+
+        // ---------- ISM 核心 ----------
+        const N = 7;
+        const DEFAULT_ADJ = [
+            [0,0,1,0,0,0,0],
+            [0,0,0,0,1,1,0],
+            [0,1,0,0,0,0,0],
+            [0,0,1,0,0,0,0],
+            [0,0,0,0,0,0,0],
+            [0,1,0,0,0,0,0],
+            [0,0,1,0,0,0,0]
+        ];
+        let adjMatrix = DEFAULT_ADJ.map(row => [...row]);
+
+        function boolMultiply(A, B) {
+            const n = A.length;
+            const C = Array(n).fill().map(() => Array(n).fill(0));
+            for (let i=0; i<n; i++) 
+                for (let j=0; j<n; j++) 
+                    for (let k=0; k<n; k++) 
+                        if (A[i][k] && B[k][j]) { C[i][j] = 1; break; }
+            return C;
+        }
+
+        function computeReachabilityWithSteps(adj) {
+            let M = adj.map((row, i) => row.map((v, j) => i===j ? 1 : v));
+            const steps = [M.map(row => [...row])];
+            while (true) {
+                const next = boolMultiply(M, M);
+                steps.push(next.map(row => [...row]));
+                if (JSON.stringify(next) === JSON.stringify(M)) break;
+                M = next;
+            }
+            return { reach: M, steps };
+        }
+
+        function computeReachability(adj) {
+            return computeReachabilityWithSteps(adj).reach;
+        }
+
+        function partitionLevels(reach) {
+            let remaining = Array.from({length: N}, (_,i) => i);
+            const levels = [];
+            let R = reach.map(row => [...row]);
+            while (remaining.length > 0) {
+                const current = [];
+                for (let idx of remaining) {
+                    const rSet = [], qSet = [];
+                    for (let j of remaining) {
+                        if (R[idx][j]) rSet.push(j);
+                        if (R[j][idx]) qSet.push(j);
+                    }
+                    const inter = rSet.filter(v => qSet.includes(v));
+                    if (JSON.stringify(inter) === JSON.stringify(rSet)) current.push(idx);
+                }
+                levels.push(current);
+                remaining = remaining.filter(v => !current.includes(v));
+            }
+            return levels;
+        }
+
+        // ---------- 有向图逐步推演 (修复切换标签页问题) ----------
+        let currentLevels = [];
+        let leaderLines = [];
+        let currentStep = 0;
+        let nodeElements = {};
+
+        function clearGraph() {
+            leaderLines.forEach(l => { try { l.remove(); } catch(e) {} });
+            leaderLines = [];
+            const container = document.getElementById('graph-container');
+            if (container) container.innerHTML = '';
+            nodeElements = {};
+        }
+
+        function computePositions(levels) {
+            const container = document.getElementById('graph-container');
+            if (!container) return {};
+            const w = container.clientWidth || 600, h = 380;
+            if (w === 0) return {}; // 隐藏状态，延迟处理
+            const levelCount = levels.length;
+            const levelHeight = (h - 30) / levelCount;
+            const pos = {};
+            levels.forEach((level, idx) => {
+                const y = 15 + idx * levelHeight + levelHeight/2;
+                const count = level.length;
+                const spacing = Math.min(85, (w-120)/count);
+                level.sort((a,b) => a-b);
+                level.forEach((node, i) => {
+                    const x = (w - (count-1)*spacing)/2 + i*spacing;
+                    pos[node] = { x, y };
+                });
+            });
+            return pos;
+        }
+
+        function createNodes(levels, positions, visibleLevels) {
+            const container = document.getElementById('graph-container');
+            if (!container) return;
+            levels.forEach((level, lvlIdx) => {
+                if (lvlIdx >= visibleLevels) return;
+                level.forEach(nodeIdx => {
+                    const p = positions[nodeIdx];
+                    if (!p) return;
+                    const div = document.createElement('div');
+                    div.id = `node-${nodeIdx}`;
+                    div.className = 'node';
+                    div.style.left = (p.x - 23) + 'px';
+                    div.style.top = (p.y - 23) + 'px';
+                    div.textContent = `s${nodeIdx+1}`;
+                    container.appendChild(div);
+                    nodeElements[nodeIdx] = div;
+                });
+            });
+        }
+
+        function drawLines(levels, visibleLevels) {
+            const visible = new Set();
+            for (let i=0; i<visibleLevels; i++) levels[i].forEach(n => visible.add(n));
+            for (let i=0; i<N; i++) {
+                for (let j=0; j<N; j++) {
+                    if (adjMatrix[i][j] === 1 && visible.has(i) && visible.has(j)) {
+                        const start = nodeElements[i], end = nodeElements[j];
+                        if (start && end) {
+                            try {
+                                const line = new LeaderLine(start, end, {
+                                    color: '#1e293b', size: 2.2, path: 'straight',
+                                    startPlug: 'behind', endPlug: 'arrow2', endPlugSize: 2.0,
+                                    endPlugOutline: true, endPlugOutlineSize: 1.2, dropShadow: false
+                                });
+                                leaderLines.push(line);
+                            } catch (e) {}
+                        }
+                    }
+                }
+            }
+        }
+
+        function renderGraphFull() {
+            clearGraph();
+            if (!currentLevels.length) return;
+            const container = document.getElementById('graph-container');
+            if (!container || container.clientWidth === 0) {
+                // 容器不可见，延迟绘制
+                return;
+            }
+            const pos = computePositions(currentLevels);
+            createNodes(currentLevels, pos, 0);
+            currentStep = 0;
+            updateStepLabel();
+        }
+
+        function redrawGraph() {
+            if (!currentLevels.length) return;
+            const container = document.getElementById('graph-container');
+            if (!container || container.clientWidth === 0) return;
+            clearGraph();
+            const pos = computePositions(currentLevels);
+            createNodes(currentLevels, pos, currentStep);
+            drawLines(currentLevels, currentStep);
+        }
+
+        function nextStep() {
+            if (!currentLevels.length) return;
+            const total = currentLevels.length;
+            if (currentStep < total) {
+                currentStep++;
+                redrawGraph();
+                updateStepLabel();
+            }
+        }
+
+        function resetGraphSteps() {
+            if (!currentLevels.length) return;
+            currentStep = 0;
+            redrawGraph();
+            updateStepLabel();
+        }
+
+        function updateStepLabel() {
+            const total = currentLevels.length;
+            const label = document.getElementById('current-step-label');
+            if (label) label.innerText = `第${currentStep}步`;
+            const hint = document.getElementById('graph-step-hint');
+            if (hint) {
+                if (currentStep === 0) hint.innerText = '点击「下一步」逐层展开节点与箭头';
+                else if (currentStep < total) hint.innerText = `当前显示第1-${currentStep}级，继续点击显示下一级`;
+                else hint.innerText = '✅ 全部4级已展示，完整递阶结构';
+            }
+        }
+
+        window.nextStep = nextStep;
+        window.resetGraphSteps = resetGraphSteps;
+
+        // 处理窗口大小变化
+        window.addEventListener('resize', () => {
+            const sandbox = document.getElementById('tab-sandbox');
+            if (sandbox && !sandbox.classList.contains('hidden') && currentLevels.length) {
+                redrawGraph();
+            }
+        });
+
+        // 幂运算过程面板
+        function renderProcessPanel(steps) {
+            const container = document.getElementById('matrix-process-content');
+            if (!container) return;
+            let html = '';
+            steps.forEach((mat, idx) => {
+                const tex = `\\begin{bmatrix} ` + mat.map(row => row.join(' & ')).join(' \\\\ ') + ` \\end{bmatrix}`;
+                html += `<div class="matrix-box"><div class="font-bold text-indigo-700 mb-1">$(A+I)^${idx+1}$</div><div>$$${tex}$$</div></div>`;
+            });
+            container.innerHTML = html;
+            MathJax.typesetPromise([container]);
+        }
+
+        window.toggleProcessPanel = function() {
+            const panel = document.getElementById('process-panel');
+            const caret = document.getElementById('process-caret');
+            if (!panel || !caret) return;
+            if (panel.classList.contains('hidden')) {
+                panel.classList.remove('hidden');
+                caret.style.transform = 'rotate(90deg)';
+                const { steps } = computeReachabilityWithSteps(adjMatrix);
+                renderProcessPanel(steps);
+            } else {
+                panel.classList.add('hidden');
+                caret.style.transform = 'rotate(0deg)';
+            }
+        };
+
+        function updateAllISM() {
+            const { reach, steps } = computeReachabilityWithSteps(adjMatrix);
+            const levels = partitionLevels(reach);
+            currentLevels = levels;
+            
+            let tex = `\\begin{bmatrix} ` + reach.map(row => row.join(' & ')).join(' \\\\ ') + ` \\end{bmatrix}`;
+            MathRenderer.render('reachability-math', `$$R = ${tex}$$`);
+            
+            const div = document.getElementById('level-result');
+            if (div) {
+                div.innerHTML = levels.map((lvl, i) => 
+                    `<div class="flex items-center gap-3"><span class="bg-indigo-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">${i+1}</span> <span class="font-mono text-base">${lvl.map(v=>`s${v+1}`).join(' , ')}</span></div>`
+                ).join('');
+            }
+            
+            // 仅在动态演示可见时绘制图形
+            const sandbox = document.getElementById('tab-sandbox');
+            if (sandbox && !sandbox.classList.contains('hidden')) {
+                renderGraphFull();
+            }
+            
+            const panel = document.getElementById('process-panel');
+            if (panel && !panel.classList.contains('hidden')) {
+                renderProcessPanel(steps);
+            }
+            
+            const analysisTab = document.getElementById('tab-analysis');
+            if (analysisTab && !analysisTab.classList.contains('hidden')) {
+                renderAnalysisContent(reach, levels);
+            }
+        }
+
+        function renderAdjacencyTable() {
+            const tbody = document.getElementById('adjacency-table');
+            if (!tbody) return;
+            let html = '';
+            for (let i=0; i<N; i++) {
+                html += '<tr>';
+                for (let j=0; j<N; j++) {
+                    const val = adjMatrix[i][j];
+                    html += `<td class="matrix-cell ${val ? 'one' : 'zero'}" onclick="toggleCell(${i},${j})">${val}</td>`;
+                }
+                html += `<td class="pl-3 text-slate-500 font-bold">s${i+1}</td></tr>`;
+            }
+            tbody.innerHTML = html;
+        }
+
+        window.toggleCell = function(i, j) {
+            adjMatrix[i][j] = adjMatrix[i][j] ? 0 : 1;
+            renderAdjacencyTable();
+            updateAllISM();
+        };
+
+        window.resetToDefaultISM = function() {
+            adjMatrix = DEFAULT_ADJ.map(row => [...row]);
+            renderAdjacencyTable();
+            updateAllISM();
+        };
+
+        function renderAnalysisContent(reach, levels) {
+            const n = N;
+            const setTable = document.getElementById('analysis-sets-table');
+            if (setTable) {
+                let html = '<thead><tr><th>要素</th><th>可达集 R(s)</th><th>先行集 Q(s)</th><th>R∩Q</th></tr></thead><tbody>';
+                for (let i=0; i<n; i++) {
+                    const r = [], q = [];
+                    for (let j=0; j<n; j++) { if(reach[i][j]) r.push(`s${j+1}`); if(reach[j][i]) q.push(`s${j+1}`); }
+                    const inter = r.filter(v => q.includes(v));
+                    html += `<tr><td>s${i+1}</td><td>{${r.join(',')}}</td><td>{${q.join(',')}}</td><td>{${inter.join(',')}}</td></tr>`;
+                }
+                setTable.innerHTML = html + '</tbody>';
+            }
+            
+            const stepDiv = document.getElementById('analysis-step-tables');
+            if (stepDiv) {
+                let remaining = Array.from({length:n},(_,i)=>i);
+                let R = reach.map(r=>[...r]);
+                let stepIdx = 1, stepsHtml = '';
+                while (remaining.length) {
+                    const cur = [];
+                    const data = [];
+                    for (let idx of remaining) {
+                        const rSet = [], qSet = [];
+                        for (let j of remaining) { if(R[idx][j]) rSet.push(j); if(R[j][idx]) qSet.push(j); }
+                        const inter = rSet.filter(v=>qSet.includes(v));
+                        data.push({idx, rSet, qSet, inter});
+                        if (JSON.stringify(inter)===JSON.stringify(rSet)) cur.push(idx);
+                    }
+                    let tbl = `<div class="bg-white border rounded-lg overflow-hidden"><div class="bg-slate-100 px-4 py-2 font-bold text-indigo-800">表4-${5+stepIdx}：第${stepIdx}级 (L${stepIdx} = {${cur.map(v=>`s${v+1}`).join(',')}})</div><table class="w-full text-sm academic-table"><thead><tr><th>sᵢ</th><th>P(sᵢ)</th><th>Q(sᵢ)</th><th>P∩Q</th></tr></thead><tbody>`;
+                    data.sort((a,b)=>a.idx-b.idx).forEach(d => {
+                        tbl += `<tr><td>s${d.idx+1}</td><td>{${d.rSet.map(v=>`s${v+1}`).join(',')}}</td><td>{${d.qSet.map(v=>`s${v+1}`).join(',')}}</td><td>{${d.inter.map(v=>`s${v+1}`).join(',')}}</td></tr>`;
+                    });
+                    tbl += `</tbody></table></div>`;
+                    stepsHtml += tbl;
+                    remaining = remaining.filter(v => !cur.includes(v));
+                    stepIdx++;
+                }
+                stepDiv.innerHTML = stepsHtml;
+            }
+            
+            const detail = document.getElementById('analysis-levels-detail');
+            if (detail) {
+                detail.innerHTML = levels.map((lvl,i)=>`<div class="bg-slate-50 p-3 rounded border"><span class="font-bold text-indigo-700">第${i+1}级 :</span> ${lvl.map(v=>`s${v+1}`).join('  ')}</div>`).join('');
+            }
+            
+            const order = levels.flat();
+            const block = order.map(i => order.map(j => reach[i][j]));
+            MathRenderer.render('analysis-block-matrix', `$$R' = \\begin{bmatrix} ` + block.map(r=>r.join(' & ')).join(' \\\\ ') + ` \\end{bmatrix}$$`);
+            MathJax.typesetPromise();
+        }
+
+        const stepData = {
+            1: { title:"生成邻接矩阵", concept:"确定要素，建立邻接矩阵A。", math:`a_{ij}=1 (s_i→s_j)`, demo:"修正版：s6→s2, s7→s3。"},
+            2: { title:"计算可达矩阵", concept:"(A+I)幂运算至收敛。", math:`R=(A+I)^k`, demo:"本例 (A+I)^3 = (A+I)^4，详见动态演示中的过程面板。"},
+            3: { title:"级别分配", concept:"R(s)∩Q(s)=R(s)为顶层，逐级剥离。", math:`L_1={s_i|...}`, demo:"L1={s5}, L2={s2,s6}, L3={s3}, L4={s1,s4,s7}。"},
+            4: { title:"绘制递阶结构", concept:"按级别排列并连线。", math:`\\text{有向图}`, demo:"点击「下一步」观察逐层构建。"}
+        };
+
+        window.showStep = function(idx) {
+            document.querySelectorAll('.ism-step-btn').forEach((b,i)=>{ 
+                b.classList.toggle('step-btn-active', i+1===idx); 
+                b.classList.toggle('text-slate-600', i+1!==idx); 
+            });
+            const d = stepData[idx];
+            let html = `<div class="space-y-6"><h2 class="text-2xl font-bold"><span class="bg-indigo-600 text-white w-8 h-8 rounded inline-flex items-center justify-center mr-2">${idx}</span>${d.title}</h2>
+                <div class="grid grid-cols-2 gap-6"><div><p class="font-bold">概念</p><p>${d.concept}</p><p class="font-bold mt-4">数学表达</p><div class="math-card">$$${d.math}$$</div></div><div><p class="font-bold">教材示例</p><p class="bg-slate-50 p-4 border">${d.demo}</p></div></div></div>`;
+            MathRenderer.renderStep('step-content', html);
+        };
+
+        window.switchTab = function(tabId) {
+            ['sandbox','steps','analysis'].forEach(id => {
+                const section = document.getElementById(`tab-${id}`);
+                if (section) section.classList.toggle('hidden', id !== tabId);
+                const btn = document.getElementById(`nav-${id}`);
+                if (btn) {
+                    btn.classList.toggle('bg-indigo-600', id === tabId);
+                    btn.classList.toggle('text-white', id === tabId);
+                    btn.classList.toggle('bg-transparent', id !== tabId);
+                    btn.classList.toggle('text-slate-600', id !== tabId);
+                }
+            });
+
+            if (tabId === 'analysis') {
+                const reach = computeReachability(adjMatrix);
+                renderAnalysisContent(reach, partitionLevels(reach));
+            }
+            if (tabId === 'steps') showStep(1);
+            if (tabId === 'sandbox') {
+                // 使用 requestAnimationFrame 确保容器已渲染
+                requestAnimationFrame(() => {
+                    if (currentLevels.length) {
+                        renderGraphFull();
+                    }
+                });
+            }
+        };
+
+        window.onload = () => {
+            resetToDefaultISM();
+            switchTab('sandbox');
+        };
+    })();
+</script>
+</body>
+</html>
