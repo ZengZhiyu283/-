@@ -4,12 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>解析结构模型 · 分层递阶 · 逐步推演</title>
-    <!-- Tailwind + 图标库 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- LeaderLine 轻量连线库 -->
     <script src="https://cdn.jsdelivr.net/npm/leader-line@1.0.5/leader-line.min.js"></script>
-    <!-- MathJax 数学公式渲染 -->
     <script>
         MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }, chtml: { displayAlign: 'center' } };
     </script>
@@ -128,7 +125,6 @@
                 <div class="compact-card bg-slate-50/70 flex flex-col">
                     <div class="text-sm font-bold text-slate-700 mb-3 border-b pb-2"><i class="fa-solid fa-arrow-right-to-bracket text-indigo-500 mr-2"></i>可达矩阵 R = (A+I)^k</div>
                     <div id="reachability-math" class="matrix-container text-base"></div>
-                    <!-- 新增：计算过程折叠面板 -->
                     <div class="mt-4 border-t pt-3">
                         <button onclick="toggleProcessPanel()" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
                             <i class="fa-solid fa-caret-right transition-transform" id="process-caret"></i>
@@ -202,21 +198,18 @@
             }
         };
 
-        // ---------- ISM 核心 (教材修正矩阵) ----------
+        // ---------- ISM 核心 ----------
         const N = 7;
         const DEFAULT_ADJ = [
-            [0,0,1,0,0,0,0], // s1 -> s3
-            [0,0,0,0,1,1,0], // s2 -> s5,s6
-            [0,1,0,0,0,0,0], // s3 -> s2
-            [0,0,1,0,0,0,0], // s4 -> s3
-            [0,0,0,0,0,0,0], // s5 无
-            [0,1,0,0,0,0,0], // s6 -> s2
-            [0,0,1,0,0,0,0]  // s7 -> s3
+            [0,0,1,0,0,0,0],
+            [0,0,0,0,1,1,0],
+            [0,1,0,0,0,0,0],
+            [0,0,1,0,0,0,0],
+            [0,0,0,0,0,0,0],
+            [0,1,0,0,0,0,0],
+            [0,0,1,0,0,0,0]
         ];
         let adjMatrix = DEFAULT_ADJ.map(row => [...row]);
-
-        // 存储计算过程
-        let matrixProcessSteps = [];
 
         function boolMultiply(A, B) {
             const n = A.length;
@@ -230,7 +223,7 @@
 
         function computeReachabilityWithSteps(adj) {
             let M = adj.map((row, i) => row.map((v, j) => i===j ? 1 : v));
-            const steps = [M.map(row => [...row])]; // (A+I)^1
+            const steps = [M.map(row => [...row])];
             while (true) {
                 const next = boolMultiply(M, M);
                 steps.push(next.map(row => [...row]));
@@ -265,7 +258,7 @@
             return levels;
         }
 
-        // ---------- 有向图逐步推演 ----------
+        // ---------- 有向图逐步推演 (修复切换标签页问题) ----------
         let currentLevels = [];
         let leaderLines = [];
         let currentStep = 0;
@@ -274,12 +267,16 @@
         function clearGraph() {
             leaderLines.forEach(l => { try { l.remove(); } catch(e) {} });
             leaderLines = [];
-            document.getElementById('graph-container').innerHTML = '';
+            const container = document.getElementById('graph-container');
+            if (container) container.innerHTML = '';
             nodeElements = {};
         }
+
         function computePositions(levels) {
             const container = document.getElementById('graph-container');
+            if (!container) return {};
             const w = container.clientWidth || 600, h = 380;
+            if (w === 0) return {}; // 隐藏状态，延迟处理
             const levelCount = levels.length;
             const levelHeight = (h - 30) / levelCount;
             const pos = {};
@@ -295,12 +292,15 @@
             });
             return pos;
         }
+
         function createNodes(levels, positions, visibleLevels) {
             const container = document.getElementById('graph-container');
+            if (!container) return;
             levels.forEach((level, lvlIdx) => {
                 if (lvlIdx >= visibleLevels) return;
                 level.forEach(nodeIdx => {
                     const p = positions[nodeIdx];
+                    if (!p) return;
                     const div = document.createElement('div');
                     div.id = `node-${nodeIdx}`;
                     div.className = 'node';
@@ -312,6 +312,7 @@
                 });
             });
         }
+
         function drawLines(levels, visibleLevels) {
             const visible = new Set();
             for (let i=0; i<visibleLevels; i++) levels[i].forEach(n => visible.add(n));
@@ -333,50 +334,72 @@
                 }
             }
         }
+
         function renderGraphFull() {
             clearGraph();
             if (!currentLevels.length) return;
+            const container = document.getElementById('graph-container');
+            if (!container || container.clientWidth === 0) {
+                // 容器不可见，延迟绘制
+                return;
+            }
             const pos = computePositions(currentLevels);
             createNodes(currentLevels, pos, 0);
             currentStep = 0;
             updateStepLabel();
         }
+
+        function redrawGraph() {
+            if (!currentLevels.length) return;
+            const container = document.getElementById('graph-container');
+            if (!container || container.clientWidth === 0) return;
+            clearGraph();
+            const pos = computePositions(currentLevels);
+            createNodes(currentLevels, pos, currentStep);
+            drawLines(currentLevels, currentStep);
+        }
+
         function nextStep() {
             if (!currentLevels.length) return;
             const total = currentLevels.length;
             if (currentStep < total) {
                 currentStep++;
-                leaderLines.forEach(l => { try { l.remove(); } catch(e) {} });
-                leaderLines = [];
-                document.getElementById('graph-container').innerHTML = '';
-                nodeElements = {};
-                const pos = computePositions(currentLevels);
-                createNodes(currentLevels, pos, currentStep);
-                drawLines(currentLevels, currentStep);
+                redrawGraph();
                 updateStepLabel();
             }
         }
+
         function resetGraphSteps() {
             if (!currentLevels.length) return;
-            clearGraph();
-            const pos = computePositions(currentLevels);
-            createNodes(currentLevels, pos, 0);
             currentStep = 0;
+            redrawGraph();
             updateStepLabel();
         }
+
         function updateStepLabel() {
             const total = currentLevels.length;
-            document.getElementById('current-step-label').innerText = `第${currentStep}步`;
+            const label = document.getElementById('current-step-label');
+            if (label) label.innerText = `第${currentStep}步`;
             const hint = document.getElementById('graph-step-hint');
-            if (currentStep === 0) hint.innerText = '点击「下一步」逐层展开节点与箭头';
-            else if (currentStep < total) hint.innerText = `当前显示第1-${currentStep}级，继续点击显示下一级`;
-            else hint.innerText = '✅ 全部4级已展示，完整递阶结构';
+            if (hint) {
+                if (currentStep === 0) hint.innerText = '点击「下一步」逐层展开节点与箭头';
+                else if (currentStep < total) hint.innerText = `当前显示第1-${currentStep}级，继续点击显示下一级`;
+                else hint.innerText = '✅ 全部4级已展示，完整递阶结构';
+            }
         }
 
         window.nextStep = nextStep;
         window.resetGraphSteps = resetGraphSteps;
 
-        // 更新过程面板
+        // 处理窗口大小变化
+        window.addEventListener('resize', () => {
+            const sandbox = document.getElementById('tab-sandbox');
+            if (sandbox && !sandbox.classList.contains('hidden') && currentLevels.length) {
+                redrawGraph();
+            }
+        });
+
+        // 幂运算过程面板
         function renderProcessPanel(steps) {
             const container = document.getElementById('matrix-process-content');
             if (!container) return;
@@ -392,10 +415,10 @@
         window.toggleProcessPanel = function() {
             const panel = document.getElementById('process-panel');
             const caret = document.getElementById('process-caret');
+            if (!panel || !caret) return;
             if (panel.classList.contains('hidden')) {
                 panel.classList.remove('hidden');
                 caret.style.transform = 'rotate(90deg)';
-                // 确保内容已渲染
                 const { steps } = computeReachabilityWithSteps(adjMatrix);
                 renderProcessPanel(steps);
             } else {
@@ -406,7 +429,6 @@
 
         function updateAllISM() {
             const { reach, steps } = computeReachabilityWithSteps(adjMatrix);
-            matrixProcessSteps = steps;
             const levels = partitionLevels(reach);
             currentLevels = levels;
             
@@ -414,25 +436,32 @@
             MathRenderer.render('reachability-math', `$$R = ${tex}$$`);
             
             const div = document.getElementById('level-result');
-            div.innerHTML = levels.map((lvl, i) => 
-                `<div class="flex items-center gap-3"><span class="bg-indigo-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">${i+1}</span> <span class="font-mono text-base">${lvl.map(v=>`s${v+1}`).join(' , ')}</span></div>`
-            ).join('');
+            if (div) {
+                div.innerHTML = levels.map((lvl, i) => 
+                    `<div class="flex items-center gap-3"><span class="bg-indigo-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">${i+1}</span> <span class="font-mono text-base">${lvl.map(v=>`s${v+1}`).join(' , ')}</span></div>`
+                ).join('');
+            }
             
-            renderGraphFull();
+            // 仅在动态演示可见时绘制图形
+            const sandbox = document.getElementById('tab-sandbox');
+            if (sandbox && !sandbox.classList.contains('hidden')) {
+                renderGraphFull();
+            }
             
-            // 如果过程面板处于展开状态，更新内容
             const panel = document.getElementById('process-panel');
             if (panel && !panel.classList.contains('hidden')) {
                 renderProcessPanel(steps);
             }
             
-            if (!document.getElementById('tab-analysis').classList.contains('hidden')) {
+            const analysisTab = document.getElementById('tab-analysis');
+            if (analysisTab && !analysisTab.classList.contains('hidden')) {
                 renderAnalysisContent(reach, levels);
             }
         }
 
         function renderAdjacencyTable() {
             const tbody = document.getElementById('adjacency-table');
+            if (!tbody) return;
             let html = '';
             for (let i=0; i<N; i++) {
                 html += '<tr>';
@@ -444,11 +473,13 @@
             }
             tbody.innerHTML = html;
         }
+
         window.toggleCell = function(i, j) {
             adjMatrix[i][j] = adjMatrix[i][j] ? 0 : 1;
             renderAdjacencyTable();
             updateAllISM();
         };
+
         window.resetToDefaultISM = function() {
             adjMatrix = DEFAULT_ADJ.map(row => [...row]);
             renderAdjacencyTable();
@@ -457,42 +488,49 @@
 
         function renderAnalysisContent(reach, levels) {
             const n = N;
-            let setHtml = '<thead><tr><th>要素</th><th>可达集 R(s)</th><th>先行集 Q(s)</th><th>R∩Q</th></tr></thead><tbody>';
-            for (let i=0; i<n; i++) {
-                const r = [], q = [];
-                for (let j=0; j<n; j++) { if(reach[i][j]) r.push(`s${j+1}`); if(reach[j][i]) q.push(`s${j+1}`); }
-                const inter = r.filter(v => q.includes(v));
-                setHtml += `<tr><td>s${i+1}</td><td>{${r.join(',')}}</td><td>{${q.join(',')}}</td><td>{${inter.join(',')}}</td></tr>`;
+            const setTable = document.getElementById('analysis-sets-table');
+            if (setTable) {
+                let html = '<thead><tr><th>要素</th><th>可达集 R(s)</th><th>先行集 Q(s)</th><th>R∩Q</th></tr></thead><tbody>';
+                for (let i=0; i<n; i++) {
+                    const r = [], q = [];
+                    for (let j=0; j<n; j++) { if(reach[i][j]) r.push(`s${j+1}`); if(reach[j][i]) q.push(`s${j+1}`); }
+                    const inter = r.filter(v => q.includes(v));
+                    html += `<tr><td>s${i+1}</td><td>{${r.join(',')}}</td><td>{${q.join(',')}}</td><td>{${inter.join(',')}}</td></tr>`;
+                }
+                setTable.innerHTML = html + '</tbody>';
             }
-            document.getElementById('analysis-sets-table').innerHTML = setHtml + '</tbody>';
             
             const stepDiv = document.getElementById('analysis-step-tables');
-            let remaining = Array.from({length:n},(_,i)=>i);
-            let R = reach.map(r=>[...r]);
-            let stepIdx = 1, stepsHtml = '';
-            while (remaining.length) {
-                const cur = [];
-                const data = [];
-                for (let idx of remaining) {
-                    const rSet = [], qSet = [];
-                    for (let j of remaining) { if(R[idx][j]) rSet.push(j); if(R[j][idx]) qSet.push(j); }
-                    const inter = rSet.filter(v=>qSet.includes(v));
-                    data.push({idx, rSet, qSet, inter});
-                    if (JSON.stringify(inter)===JSON.stringify(rSet)) cur.push(idx);
+            if (stepDiv) {
+                let remaining = Array.from({length:n},(_,i)=>i);
+                let R = reach.map(r=>[...r]);
+                let stepIdx = 1, stepsHtml = '';
+                while (remaining.length) {
+                    const cur = [];
+                    const data = [];
+                    for (let idx of remaining) {
+                        const rSet = [], qSet = [];
+                        for (let j of remaining) { if(R[idx][j]) rSet.push(j); if(R[j][idx]) qSet.push(j); }
+                        const inter = rSet.filter(v=>qSet.includes(v));
+                        data.push({idx, rSet, qSet, inter});
+                        if (JSON.stringify(inter)===JSON.stringify(rSet)) cur.push(idx);
+                    }
+                    let tbl = `<div class="bg-white border rounded-lg overflow-hidden"><div class="bg-slate-100 px-4 py-2 font-bold text-indigo-800">表4-${5+stepIdx}：第${stepIdx}级 (L${stepIdx} = {${cur.map(v=>`s${v+1}`).join(',')}})</div><table class="w-full text-sm academic-table"><thead><tr><th>sᵢ</th><th>P(sᵢ)</th><th>Q(sᵢ)</th><th>P∩Q</th></tr></thead><tbody>`;
+                    data.sort((a,b)=>a.idx-b.idx).forEach(d => {
+                        tbl += `<tr><td>s${d.idx+1}</td><td>{${d.rSet.map(v=>`s${v+1}`).join(',')}}</td><td>{${d.qSet.map(v=>`s${v+1}`).join(',')}}</td><td>{${d.inter.map(v=>`s${v+1}`).join(',')}}</td></tr>`;
+                    });
+                    tbl += `</tbody></table></div>`;
+                    stepsHtml += tbl;
+                    remaining = remaining.filter(v => !cur.includes(v));
+                    stepIdx++;
                 }
-                let tbl = `<div class="bg-white border rounded-lg overflow-hidden"><div class="bg-slate-100 px-4 py-2 font-bold text-indigo-800">表4-${5+stepIdx}：第${stepIdx}级 (L${stepIdx} = {${cur.map(v=>`s${v+1}`).join(',')}})</div><table class="w-full text-sm academic-table"><thead><tr><th>sᵢ</th><th>P(sᵢ)</th><th>Q(sᵢ)</th><th>P∩Q</th></tr></thead><tbody>`;
-                data.sort((a,b)=>a.idx-b.idx).forEach(d => {
-                    tbl += `<tr><td>s${d.idx+1}</td><td>{${d.rSet.map(v=>`s${v+1}`).join(',')}}</td><td>{${d.qSet.map(v=>`s${v+1}`).join(',')}}</td><td>{${d.inter.map(v=>`s${v+1}`).join(',')}}</td></tr>`;
-                });
-                tbl += `</tbody></table></div>`;
-                stepsHtml += tbl;
-                remaining = remaining.filter(v => !cur.includes(v));
-                stepIdx++;
+                stepDiv.innerHTML = stepsHtml;
             }
-            stepDiv.innerHTML = stepsHtml;
             
             const detail = document.getElementById('analysis-levels-detail');
-            detail.innerHTML = levels.map((lvl,i)=>`<div class="bg-slate-50 p-3 rounded border"><span class="font-bold text-indigo-700">第${i+1}级 :</span> ${lvl.map(v=>`s${v+1}`).join('  ')}</div>`).join('');
+            if (detail) {
+                detail.innerHTML = levels.map((lvl,i)=>`<div class="bg-slate-50 p-3 rounded border"><span class="font-bold text-indigo-700">第${i+1}级 :</span> ${lvl.map(v=>`s${v+1}`).join('  ')}</div>`).join('');
+            }
             
             const order = levels.flat();
             const block = order.map(i => order.map(j => reach[i][j]));
@@ -506,6 +544,7 @@
             3: { title:"级别分配", concept:"R(s)∩Q(s)=R(s)为顶层，逐级剥离。", math:`L_1={s_i|...}`, demo:"L1={s5}, L2={s2,s6}, L3={s3}, L4={s1,s4,s7}。"},
             4: { title:"绘制递阶结构", concept:"按级别排列并连线。", math:`\\text{有向图}`, demo:"点击「下一步」观察逐层构建。"}
         };
+
         window.showStep = function(idx) {
             document.querySelectorAll('.ism-step-btn').forEach((b,i)=>{ 
                 b.classList.toggle('step-btn-active', i+1===idx); 
@@ -519,30 +558,36 @@
 
         window.switchTab = function(tabId) {
             ['sandbox','steps','analysis'].forEach(id => {
-                document.getElementById(`tab-${id}`).classList.toggle('hidden', id !== tabId);
+                const section = document.getElementById(`tab-${id}`);
+                if (section) section.classList.toggle('hidden', id !== tabId);
                 const btn = document.getElementById(`nav-${id}`);
-                btn.classList.toggle('bg-indigo-600', id === tabId);
-                btn.classList.toggle('text-white', id === tabId);
-                btn.classList.toggle('bg-transparent', id !== tabId);
-                btn.classList.toggle('text-slate-600', id !== tabId);
+                if (btn) {
+                    btn.classList.toggle('bg-indigo-600', id === tabId);
+                    btn.classList.toggle('text-white', id === tabId);
+                    btn.classList.toggle('bg-transparent', id !== tabId);
+                    btn.classList.toggle('text-slate-600', id !== tabId);
+                }
             });
+
             if (tabId === 'analysis') {
                 const reach = computeReachability(adjMatrix);
                 renderAnalysisContent(reach, partitionLevels(reach));
             }
             if (tabId === 'steps') showStep(1);
-            if (tabId === 'sandbox') { setTimeout(()=> { if(currentLevels.length) renderGraphFull(); }, 20); }
+            if (tabId === 'sandbox') {
+                // 使用 requestAnimationFrame 确保容器已渲染
+                requestAnimationFrame(() => {
+                    if (currentLevels.length) {
+                        renderGraphFull();
+                    }
+                });
+            }
         };
 
         window.onload = () => {
             resetToDefaultISM();
             switchTab('sandbox');
         };
-        window.addEventListener('resize', () => {
-            if (!document.getElementById('tab-sandbox').classList.contains('hidden') && currentLevels.length) {
-                renderGraphFull();
-            }
-        });
     })();
 </script>
 </body>
