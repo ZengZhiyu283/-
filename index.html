@@ -43,7 +43,6 @@
             box-shadow: 0 2px 6px rgba(0,0,0,0.1); border: 2px solid white;
             z-index: 30; transition: opacity 0.2s; cursor: default; font-size: 1rem;
         }
-        .node.hidden-node { opacity: 0; pointer-events: none; }
         .leader-line { z-index: 20; }
         .step-badge {
             background: #e0e7ff; color: #1e40af; padding: 2px 10px;
@@ -61,6 +60,12 @@
             border-radius: 0.5rem;
             border: 1px solid #cbd5e1;
             text-align: center;
+        }
+        .static-graph-canvas {
+            width: 100%;
+            height: auto;
+            background: #fafcff;
+            border-radius: 0.5rem;
         }
     </style>
 </head>
@@ -107,7 +112,7 @@
                     <div class="card-header">
                         <span><i class="fa-solid fa-share-alt text-emerald-500 mr-1"></i> 多层递阶结构 · 逐步推演</span>
                         <div class="flex items-center gap-3">
-                            <span class="step-badge"><span id="current-step-label">第0步</span> / 共4级</span>
+                            <span class="step-badge"><span id="current-step-label">第0步</span> / 共5步</span>
                             <button onclick="nextStep()" id="next-step-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-1.5 rounded-lg shadow flex items-center gap-1 transition"><i class="fa-solid fa-arrow-right"></i> 下一步</button>
                             <button onclick="resetGraphSteps()" class="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded border"><i class="fa-solid fa-undo-alt"></i> 重置视图</button>
                         </div>
@@ -116,7 +121,7 @@
                         <div id="graph-container" class="graph-canvas-container relative"></div>
                     </div>
                     <div class="mt-3 text-xs text-slate-500 flex justify-between">
-                        <span><i class="fa-regular fa-lightbulb"></i> 箭头采用规整直线 + 实心三角，清晰展示直接影响关系</span>
+                        <span><i class="fa-regular fa-lightbulb"></i> 先逐级显示要素，最后一步统一绘制箭头</span>
                         <span id="graph-step-hint" class="font-medium text-indigo-600"></span>
                     </div>
                 </div>
@@ -258,15 +263,20 @@
             return levels;
         }
 
-        // ---------- 有向图逐步推演 (修复切换标签页问题) ----------
+        // ---------- 有向图逐步推演 (先要素后箭头) ----------
         let currentLevels = [];
         let leaderLines = [];
-        let currentStep = 0;
+        let currentStep = 0;          
+        const TOTAL_STEPS = 5;         
         let nodeElements = {};
 
-        function clearGraph() {
+        function clearAllLines() {
             leaderLines.forEach(l => { try { l.remove(); } catch(e) {} });
             leaderLines = [];
+        }
+
+        function clearGraph() {
+            clearAllLines();
             const container = document.getElementById('graph-container');
             if (container) container.innerHTML = '';
             nodeElements = {};
@@ -276,7 +286,7 @@
             const container = document.getElementById('graph-container');
             if (!container) return {};
             const w = container.clientWidth || 600, h = 380;
-            if (w === 0) return {}; // 隐藏状态，延迟处理
+            if (w === 0) return {};
             const levelCount = levels.length;
             const levelHeight = (h - 30) / levelCount;
             const pos = {};
@@ -313,12 +323,14 @@
             });
         }
 
-        function drawLines(levels, visibleLevels) {
-            const visible = new Set();
-            for (let i=0; i<visibleLevels; i++) levels[i].forEach(n => visible.add(n));
+        function drawAllArrows() {
+            clearAllLines();
+            const container = document.getElementById('graph-container');
+            if (!container || container.clientWidth === 0) return;
+            
             for (let i=0; i<N; i++) {
                 for (let j=0; j<N; j++) {
-                    if (adjMatrix[i][j] === 1 && visible.has(i) && visible.has(j)) {
+                    if (adjMatrix[i][j] === 1) {
                         const start = nodeElements[i], end = nodeElements[j];
                         if (start && end) {
                             try {
@@ -335,34 +347,24 @@
             }
         }
 
-        function renderGraphFull() {
-            clearGraph();
-            if (!currentLevels.length) return;
-            const container = document.getElementById('graph-container');
-            if (!container || container.clientWidth === 0) {
-                // 容器不可见，延迟绘制
-                return;
-            }
-            const pos = computePositions(currentLevels);
-            createNodes(currentLevels, pos, 0);
-            currentStep = 0;
-            updateStepLabel();
-        }
-
         function redrawGraph() {
             if (!currentLevels.length) return;
             const container = document.getElementById('graph-container');
             if (!container || container.clientWidth === 0) return;
+            
             clearGraph();
             const pos = computePositions(currentLevels);
-            createNodes(currentLevels, pos, currentStep);
-            drawLines(currentLevels, currentStep);
+            const visibleLevels = Math.min(currentStep, currentLevels.length);
+            createNodes(currentLevels, pos, visibleLevels);
+            
+            if (currentStep === TOTAL_STEPS) {
+                drawAllArrows();
+            }
         }
 
         function nextStep() {
             if (!currentLevels.length) return;
-            const total = currentLevels.length;
-            if (currentStep < total) {
+            if (currentStep < TOTAL_STEPS) {
                 currentStep++;
                 redrawGraph();
                 updateStepLabel();
@@ -377,21 +379,23 @@
         }
 
         function updateStepLabel() {
-            const total = currentLevels.length;
             const label = document.getElementById('current-step-label');
             if (label) label.innerText = `第${currentStep}步`;
             const hint = document.getElementById('graph-step-hint');
             if (hint) {
-                if (currentStep === 0) hint.innerText = '点击「下一步」逐层展开节点与箭头';
-                else if (currentStep < total) hint.innerText = `当前显示第1-${currentStep}级，继续点击显示下一级`;
-                else hint.innerText = '✅ 全部4级已展示，完整递阶结构';
+                if (currentStep === 0) hint.innerText = '点击「下一步」逐级显示要素';
+                else if (currentStep < TOTAL_STEPS) hint.innerText = `显示第1-${currentStep}级要素`;
+                else hint.innerText = '✅ 全部要素及箭头已展示，完整递阶结构';
             }
         }
 
         window.nextStep = nextStep;
         window.resetGraphSteps = resetGraphSteps;
 
-        // 处理窗口大小变化
+        function forceClearLines() {
+            clearAllLines();
+        }
+
         window.addEventListener('resize', () => {
             const sandbox = document.getElementById('tab-sandbox');
             if (sandbox && !sandbox.classList.contains('hidden') && currentLevels.length) {
@@ -442,10 +446,10 @@
                 ).join('');
             }
             
-            // 仅在动态演示可见时绘制图形
             const sandbox = document.getElementById('tab-sandbox');
             if (sandbox && !sandbox.classList.contains('hidden')) {
-                renderGraphFull();
+                currentStep = 0;
+                redrawGraph();
             }
             
             const panel = document.getElementById('process-panel');
@@ -538,11 +542,109 @@
             MathJax.typesetPromise();
         }
 
+        // ---------- 绘制静态递阶图 (用于步骤详解第四步) ----------
+        function drawStaticGraph(canvasId) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = 500, h = 300;
+            canvas.width = w; canvas.height = h;
+            
+            const levels = [[4], [1,5], [2], [0,3,6]]; // s5, s2,s6, s3, s1,s4,s7 (索引从0)
+            const nodeRadius = 20;
+            const levelHeight = (h - 40) / 4;
+            const positions = {};
+            
+            levels.forEach((level, idx) => {
+                const y = 20 + idx * levelHeight + levelHeight/2;
+                const count = level.length;
+                const spacing = 70;
+                level.sort((a,b)=>a-b);
+                level.forEach((node, i) => {
+                    const x = (w - (count-1)*spacing)/2 + i*spacing;
+                    positions[node] = { x, y };
+                });
+            });
+            
+            ctx.clearRect(0, 0, w, h);
+            
+            // 画箭头
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 2;
+            const adj = DEFAULT_ADJ;
+            for (let i=0; i<N; i++) {
+                for (let j=0; j<N; j++) {
+                    if (adj[i][j] === 1) {
+                        const from = positions[i], to = positions[j];
+                        if (from && to) {
+                            drawArrow(ctx, from.x, from.y, to.x, to.y, nodeRadius);
+                        }
+                    }
+                }
+            }
+            
+            // 画节点
+            for (let i=0; i<N; i++) {
+                const p = positions[i];
+                if (!p) continue;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, nodeRadius, 0, 2*Math.PI);
+                ctx.fillStyle = '#2563eb';
+                ctx.shadowColor = '#a5b4fc';
+                ctx.shadowBlur = 6;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 12px "Noto Sans SC"';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`s${i+1}`, p.x, p.y);
+            }
+            
+            // 标注级别
+            ctx.fillStyle = '#64748b';
+            ctx.font = '10px sans-serif';
+            ctx.fillText('L1', 20, positions[4].y+4);
+            ctx.fillText('L2', 20, positions[1].y+4);
+            ctx.fillText('L3', 20, positions[2].y+4);
+            ctx.fillText('L4', 20, positions[0].y+4);
+        }
+        
+        function drawArrow(ctx, fromX, fromY, toX, toY, radius) {
+            const angle = Math.atan2(toY - fromY, toX - fromX);
+            const startX = fromX + radius * Math.cos(angle);
+            const startY = fromY + radius * Math.sin(angle);
+            const endX = toX - radius * Math.cos(angle);
+            const endY = toY - radius * Math.sin(angle);
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+            const arrowSize = 8;
+            const arrowX = endX - 4 * Math.cos(angle);
+            const arrowY = endY - 4 * Math.sin(angle);
+            ctx.beginPath();
+            ctx.fillStyle = '#1e293b';
+            ctx.moveTo(arrowX, arrowY);
+            ctx.lineTo(arrowX - arrowSize*0.5*Math.cos(angle - 0.8), arrowY - arrowSize*0.5*Math.sin(angle - 0.8));
+            ctx.lineTo(arrowX - arrowSize*0.5*Math.cos(angle + 0.8), arrowY - arrowSize*0.5*Math.sin(angle + 0.8));
+            ctx.closePath();
+            ctx.fill();
+        }
+
         const stepData = {
-            1: { title:"生成邻接矩阵", concept:"确定要素，建立邻接矩阵A。", math:`a_{ij}=1 (s_i→s_j)`, demo:"修正版：s6→s2, s7→s3。"},
+            1: { 
+                title:"生成邻接矩阵", 
+                concept:"确定系统要素，根据直接影响关系建立邻接矩阵A。", 
+                math:`a_{ij} = \\begin{cases} 1 & (s_i \\text{ 指向 } s_j) \\\\ 0 & (\\text{否则}) \\end{cases}`,
+                demo: `邻接矩阵结果：$$A = \\begin{bmatrix} 0 & 0 & 1 & 0 & 0 & 0 & 0 \\\\ 0 & 0 & 0 & 0 & 1 & 1 & 0 \\\\ 0 & 1 & 0 & 0 & 0 & 0 & 0 \\\\ 0 & 0 & 1 & 0 & 0 & 0 & 0 \\\\ 0 & 0 & 0 & 0 & 0 & 0 & 0 \\\\ 0 & 1 & 0 & 0 & 0 & 0 & 0 \\\\ 0 & 0 & 1 & 0 & 0 & 0 & 0 \\end{bmatrix}$$`
+            },
             2: { title:"计算可达矩阵", concept:"(A+I)幂运算至收敛。", math:`R=(A+I)^k`, demo:"本例 (A+I)^3 = (A+I)^4，详见动态演示中的过程面板。"},
-            3: { title:"级别分配", concept:"R(s)∩Q(s)=R(s)为顶层，逐级剥离。", math:`L_1={s_i|...}`, demo:"L1={s5}, L2={s2,s6}, L3={s3}, L4={s1,s4,s7}。"},
-            4: { title:"绘制递阶结构", concept:"按级别排列并连线。", math:`\\text{有向图}`, demo:"点击「下一步」观察逐层构建。"}
+            3: { title:"级别分配", concept:"R(s)∩Q(s)=R(s)为顶层，逐级剥离。", math:`L_1=\\{s_i \\mid R(s_i) \\cap Q(s_i) = R(s_i)\\}` , demo:"L1={s5}, L2={s2,s6}, L3={s3}, L4={s1,s4,s7}。"},
+            4: { title:"绘制递阶结构", concept:"按级别排列并连线，形成多层递阶有向图。", math:`\\text{分层有向图}`, demo: `<canvas id="static-ism-graph" class="static-graph-canvas" width="500" height="300"></canvas><p class="text-sm text-slate-500 mt-2">最终递阶结构：L1={s5}, L2={s2,s6}, L3={s3}, L4={s1,s4,s7}</p>`}
         };
 
         window.showStep = function(idx) {
@@ -552,11 +654,30 @@
             });
             const d = stepData[idx];
             let html = `<div class="space-y-6"><h2 class="text-2xl font-bold"><span class="bg-indigo-600 text-white w-8 h-8 rounded inline-flex items-center justify-center mr-2">${idx}</span>${d.title}</h2>
-                <div class="grid grid-cols-2 gap-6"><div><p class="font-bold">概念</p><p>${d.concept}</p><p class="font-bold mt-4">数学表达</p><div class="math-card">$$${d.math}$$</div></div><div><p class="font-bold">教材示例</p><p class="bg-slate-50 p-4 border">${d.demo}</p></div></div></div>`;
+                <div class="grid grid-cols-2 gap-6">
+                    <div>
+                        <p class="font-bold text-lg">理论概念</p>
+                        <p class="text-slate-700">${d.concept}</p>
+                        <p class="font-bold mt-4 text-lg">数学表达</p>
+                        <div class="math-card">$$${d.math}$$</div>
+                    </div>
+                    <div>
+                        <p class="font-bold text-lg">教材示例</p>
+                        <div class="bg-slate-50 p-4 border rounded-lg">${d.demo}</div>
+                    </div>
+                </div>
+            </div>`;
             MathRenderer.renderStep('step-content', html);
+            if (idx === 4) {
+                setTimeout(() => drawStaticGraph('static-ism-graph'), 50);
+            }
         };
 
         window.switchTab = function(tabId) {
+            if (tabId !== 'sandbox') {
+                forceClearLines();
+            }
+            
             ['sandbox','steps','analysis'].forEach(id => {
                 const section = document.getElementById(`tab-${id}`);
                 if (section) section.classList.toggle('hidden', id !== tabId);
@@ -575,10 +696,9 @@
             }
             if (tabId === 'steps') showStep(1);
             if (tabId === 'sandbox') {
-                // 使用 requestAnimationFrame 确保容器已渲染
                 requestAnimationFrame(() => {
                     if (currentLevels.length) {
-                        renderGraphFull();
+                        redrawGraph();
                     }
                 });
             }
